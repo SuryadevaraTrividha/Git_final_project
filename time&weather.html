@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Weather & Local Time</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    :root {
+      --radius: 12px;
+      --shadow: 0 8px 28px rgba(0,0,0,0.15);
+      --transition: 0.25s cubic-bezier(.4,.2,.2,1);
+      font-family: system-ui,-apple-system,BlinkMacSystemFont,sans-serif;
+    }
+    * { box-sizing:border-box; }
+    body {
+      margin:0;
+      min-height:100vh;
+      background: linear-gradient(135deg,#667eea,#764ba2);
+      color:#1f2d3a;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:2rem;
+    }
+    .card {
+      background:#fff;
+      padding:2rem;
+      border-radius:16px;
+      width:100%;
+      max-width:520px;
+      box-shadow: var(--shadow);
+    }
+    h1 {
+      margin:0 0 0.5rem;
+      font-size:1.75rem;
+      display:flex;
+      align-items:center;
+      gap:8px;
+    }
+    .input-wrapper {
+      position: relative;
+      margin-top:1rem;
+    }
+    input {
+      width:100%;
+      padding:12px 16px;
+      border-radius:8px;
+      border:1px solid #d1d8e0;
+      font-size:1rem;
+      outline:none;
+      transition: border-color .2s;
+    }
+    input:focus { border-color:#667eea; }
+    .suggestions {
+      position:absolute;
+      top:100%;
+      left:0;
+      right:0;
+      background:#fff;
+      border:1px solid #d1d8e0;
+      border-top:none;
+      border-radius:0 0 8px 8px;
+      overflow:hidden;
+      z-index:10;
+      max-height:260px;
+      overflow-y:auto;
+    }
+    .suggestion {
+      padding:10px 14px;
+      cursor:pointer;
+      display:flex;
+      justify-content: space-between;
+    }
+    .suggestion:hover {
+      background:rgba(102,126,234,0.1);
+    }
+    .selected {
+      margin-top:1.5rem;
+      padding:1rem 1rem 1.5rem;
+      border-radius:10px;
+      background: #f7f9fc;
+      position: relative;
+    }
+    .time {
+      font-size:2rem;
+      font-weight:600;
+      margin:0;
+    }
+    .location {
+      font-size:1.1rem;
+      margin:4px 0 12px;
+      color:#555;
+    }
+    .weather-box {
+      display:flex;
+      gap:16px;
+      flex-wrap: wrap;
+      align-items:center;
+      margin-top:8px;
+    }
+    .weather {
+      background:#fff;
+      padding:16px;
+      border-radius:8px;
+      flex:1;
+      min-width:180px;
+      box-shadow:0 6px 20px rgba(0,0,0,0.05);
+    }
+    .small {
+      font-size:0.85rem;
+      color:#666;
+    }
+    .chip {
+      background: #eef2fb;
+      padding:6px 12px;
+      border-radius:999px;
+      font-size:0.75rem;
+      display:inline-block;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="card" aria-label="Random Weather and Local Time Widget">
+    <h1>Local Time & Weather</h1>
+    <div class="small">Type a place. Select one of the suggestions (11+ available).</div>
+
+    <div class="input-wrapper">
+      <input id="city-input" placeholder="Enter city or area (e.g., Tokyo, London...)" aria-label="City input" autocomplete="off" />
+      <div id="suggestions" class="suggestions" aria-label="City suggestions" style="display:none;"></div>
+    </div>
+
+    <div id="display" style="display:none;" class="selected" aria-live="polite">
+      <div class="location" id="loc-name">—</div>
+      <div class="time" id="local-time">--:--:--</div>
+      <div class="small">Time zone: <span id="tz-name">—</span></div>
+
+      <div class="weather-box">
+        <div class="weather">
+          <div><strong>Weather</strong></div>
+          <div style="margin:8px 0;">
+            <div><span id="temp">--°C</span> &middot; <span id="cond">—</span></div>
+            <div class="small" id="extra">Feels like --°, Humidity --%</div>
+          </div>
+          <div class="small" id="weather-desc">—</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Extended list of places with IANA time zones, climate type, and snow permission
+    const places = [
+      { name: "New York, USA", tz: "America/New_York", allowSnow: true, type: "temperate" },
+      { name: "London, UK", tz: "Europe/London", allowSnow: true, type: "temperate" },
+      { name: "Tokyo, Japan", tz: "Asia/Tokyo", allowSnow: true, type: "temperate" },
+      { name: "Sydney, Australia", tz: "Australia/Sydney", allowSnow: false, type: "southern-temperate" },
+      { name: "Mumbai, India", tz: "Asia/Kolkata", allowSnow: false, type: "tropical" },
+      { name: "San Francisco, USA", tz: "America/Los_Angeles", allowSnow: false, type: "mild" },
+      { name: "Moscow, Russia", tz: "Europe/Moscow", allowSnow: true, type: "cold" },
+      { name: "Paris, France", tz: "Europe/Paris", allowSnow: true, type: "temperate" },
+      { name: "Beijing, China", tz: "Asia/Shanghai", allowSnow: true, type: "temperate" },
+      { name: "Cairo, Egypt", tz: "Africa/Cairo", allowSnow: false, type: "desert" },
+      { name: "Dubai, UAE", tz: "Asia/Dubai", allowSnow: false, type: "desert" },
+      { name: "São Paulo, Brazil", tz: "America/Sao_Paulo", allowSnow: false, type: "subtropical" },
+      { name: "Johannesburg, South Africa", tz: "Africa/Johannesburg", allowSnow: false, type: "highland" },
+      { name: "Berlin, Germany", tz: "Europe/Berlin", allowSnow: true, type: "temperate" },
+      { name: "Seoul, South Korea", tz: "Asia/Seoul", allowSnow: true, type: "temperate" }
+    ];
+
+    const input = document.getElementById("city-input");
+    const sugBox = document.getElementById("suggestions");
+    const display = document.getElementById("display");
+    const locNameEl = document.getElementById("loc-name");
+    const timeEl = document.getElementById("local-time");
+    const tzNameEl = document.getElementById("tz-name");
+    const tempEl = document.getElementById("temp");
+    const condEl = document.getElementById("cond");
+    const extraEl = document.getElementById("extra");
+    const weatherDescEl = document.getElementById("weather-desc");
+
+    let currentTimezone = "UTC";
+    let timeInterval = null;
+    let currentPlace = null;
+
+    function makeSuggestions(query) {
+      if (!query.trim()) {
+        return places.slice(0, 11);
+      }
+      const lower = query.toLowerCase();
+      const filtered = places.filter(p => p.name.toLowerCase().includes(lower));
+      if (filtered.length === 0) {
+        return places.slice(0, 11);
+      }
+      return filtered.slice(0, 11);
+    }
+
+    function renderSuggestions(list) {
+      sugBox.innerHTML = "";
+      list.forEach(p => {
+        const div = document.createElement("div");
+        div.className = "suggestion";
+        div.setAttribute("role","button");
+        div.tabIndex = 0;
+        div.innerHTML = `<div>${p.name}</div><div class="chip">${p.tz}</div>`;
+        div.addEventListener("click", () => selectPlace(p));
+        div.addEventListener("keydown", e => {
+          if (e.key === "Enter" || e.key === " ") {
+            selectPlace(p);
+          }
+        });
+        sugBox.appendChild(div);
+      });
+      sugBox.style.display = "block";
+    }
+
+    input.addEventListener("input", () => {
+      const list = makeSuggestions(input.value);
+      renderSuggestions(list);
+    });
+
+    input.addEventListener("focus", () => {
+      const list = makeSuggestions(input.value);
+      renderSuggestions(list);
+    });
+
+    document.addEventListener("click", e => {
+      if (!e.target.closest(".input-wrapper")) {
+        sugBox.style.display = "none";
+      }
+    });
+
+    function selectPlace(place) {
+      currentPlace = place;
+      input.value = place.name;
+      sugBox.style.display = "none";
+      currentTimezone = place.tz;
+      locNameEl.textContent = place.name;
+      tzNameEl.textContent = place.tz;
+      display.style.display = "block";
+      startClock();
+      generateRandomWeather();
+    }
+
+    function startClock() {
+      if (timeInterval) clearInterval(timeInterval);
+      function update() {
+        try {
+          const now = new Date();
+          const options = {
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+            hour12: false,
+            timeZone: currentTimezone
+          };
+          const formatter = new Intl.DateTimeFormat([], options);
+          timeEl.textContent = formatter.format(now);
+        } catch (e) {
+          timeEl.textContent = "Invalid timezone";
+        }
+      }
+      update();
+      timeInterval = setInterval(update, 1000);
+    }
+
+    // Standard weather types
+    const baseConditions = [
+      "Sunny",
+      "Cloudy",
+      "Rain",
+      "Snow",
+      "Thunderstorm",
+      "Foggy",
+      "Windy"
+    ];
+
+    function randomInt(min, max) {
+      return Math.floor(Math.random() * (max - min + 1)) + min;
+    }
+
+    function pickConditionForPlace(place) {
+      const now = new Date();
+      const month = now.getUTCMonth() + 1; // 1..12
+      const pool = [];
+
+      baseConditions.forEach(c => {
+        let weight = 1;
+
+        if (c === "Snow") {
+          if (!place.allowSnow) {
+            weight = 0;
+          } else if ([12, 1, 2].includes(month)) {
+            weight = 3;
+          } else {
+            weight = 0;
+          }
+        }
+
+        if (c === "Rain") {
+          if (place.type === "temperate" && ([3,4,5,9,10].includes(month))) weight = 2;
+          else if (["subtropical","highland"].includes(place.type)) weight = 2;
+        }
+
+        if (c === "Thunderstorm") {
+          if ((place.type === "temperate" && (month >= 5 && month <= 9)) ||
+              (place.type === "tropical" || place.type === "subtropical")) weight = 2;
+        }
+
+        if (c === "Foggy") {
+          if ((place.type === "cold" || place.type === "temperate") &&
+              [11,12,1].includes(month)) weight = 2;
+        }
+
+        if (c === "Sunny") {
+          if (place.type === "desert" || place.type === "tropical" || place.type === "subtropical") weight = 3;
+          if (place.type === "temperate" && (month >= 6 && month <= 8)) weight = 2;
+        }
+
+        for (let i = 0; i < weight; i++) pool.push(c);
+      });
+
+      if (pool.length === 0) return "Cloudy";
+      return pool[randomInt(0, pool.length - 1)];
+    }
+
+    function generateRandomWeather() {
+      if (!currentPlace) return;
+      const condition = pickConditionForPlace(currentPlace);
+      let temp;
+
+      if (condition === "Snow") temp = randomInt(-8, 2);
+      else if (condition === "Rain" || condition === "Foggy") temp = randomInt(10, 20);
+      else if (condition === "Thunderstorm") temp = randomInt(20, 30);
+      else if (condition === "Sunny") {
+        if (currentPlace.type === "desert") temp = randomInt(25, 38);
+        else if (currentPlace.type === "tropical" || currentPlace.type === "subtropical") temp = randomInt(22, 33);
+        else temp = randomInt(15, 28);
+      }
+      else if (condition === "Windy") temp = randomInt(12, 25);
+      else temp = randomInt(12, 25);
+
+      let feelsLike = temp;
+      const humidity = (() => {
+        if (["Rain", "Foggy", "Thunderstorm"].includes(condition)) return randomInt(70, 95);
+        if (condition === "Sunny") return randomInt(30, 55);
+        return randomInt(40, 70);
+      })();
+
+      if (temp >= 28 && humidity > 60) feelsLike += 2;
+      if (condition === "Windy" && temp >= 15 && temp <= 25) feelsLike -= 1;
+
+      const extraMap = {
+        "Sunny": ["Clear skies ahead.", "Bright and warm.", "Light breeze keeping it fresh."],
+        "Cloudy": ["Overcast but dry.", "Clouds drifting slowly.", "Gray sky with mild temperature."],
+        "Rain": ["Wet and drizzly.", "Steady rain expected.", "Carry an umbrella."],
+        "Snow": ["Snowflakes falling.", "Light snow accumulation.", "Chilly with snow flurries."],
+        "Thunderstorm": ["Thunder rumbling nearby.", "Stormy with lightning.", "Heavy showers with thunder."],
+        "Foggy": ["Low visibility.", "Misty morning.", "Fog settling in."],
+        "Windy": ["Gusty winds.", "Blustery conditions.", "Wind picking up."]
+      };
+      const extras = extraMap[condition] || ["Typical weather conditions."];
+      const extraDesc = extras[randomInt(0, extras.length - 1)];
+
+      tempEl.textContent = `${temp}°C`;
+      condEl.textContent = condition;
+      extraEl.textContent = `Feels like ${feelsLike}°, Humidity ${humidity}%`;
+      weatherDescEl.textContent = extraDesc;
+    }
+
+    // Initialize with default suggestions
+    renderSuggestions(makeSuggestions(""));
+  </script>
+
+</body>
+</html>
